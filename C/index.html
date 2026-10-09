@@ -1,0 +1,100 @@
+supported on this device");
+ let st;try{st=await navigator.mediaDevices.getUserMedia({audio:true})}catch(e){return toast("Allow the microphone to record")}
+ const mime=["audio/webm;codecs=opus","audio/webm","audio/ogg;codecs=opus","audio/mp4"].find(t=>MediaRecorder.isTypeSupported(t))||"";let rec;try{rec=new MediaRecorder(st,mime?{mimeType:mime,audioBitsPerSecond:32000}:undefined)}catch(e){st.getTracks().forEach(t=>t.stop());return toast("Couldn't start recording")}const R={rec,st,ch:[],t0:Date.now(),n,send:false,tick:0};X.rec=R;rec.ondataavailable=e=>{if(e.data&&e.data.size)R.ch.push(e.data)};rec.onstop=()=>{clearInterval(R.tick);st.getTracks().forEach(t=>t.stop());X.rec=null;const secs=(Date.now()-R.t0)/1000;if(openChatId()===R.n)composer(R.n);if(!R.send)return;if(secs<1)return toast("Too short");const type=(rec.mimeType||mime||"audio/webm").split(";")[0],blob=new Blob(R.ch,{type}),ext=type.includes("ogg")?"ogg":type.includes("mp4")?"m4a":"webm";sendMedia(R.n,"au",blob,ext,type,{secs})};rec.start(300);$("cin").innerHTML=`<div class="rec"><button class="rcx" id="rcx" aria-label="Cancel recording">${ICO_TRASH}</button><span class="rdot"></span><span id="rct">0:00</span><span class="grow"></span>...`;
+$("rcx").onclick=()=>{R.send=false;rec.stop()};$("rcs").onclick=()=>{R.send=true;rec.stop()};R.tick=setInterval(()=>{const s=(Date.now()-R.t0)/1000,e=$("rct");if(e)e.textContent=fmtDur(s);if(openChatId()!==R.n){R.send=false;try{rec.stop()}catch(x){}}if(s>=600){R.send=true;try{rec.stop()}catch(x){}}},250)}
+
+/* video: max 3 minutes. In-app recorder uses a low bitrate so 3 min always fits the upload limit */
+const VMAX=180,VBYTES=50*1024*1024,OKV=["video/mp4","video/webm","video/quicktime","video/3gpp"];
+const extOf=t=>t.includes("webm")?"webm":t.includes("quicktime")?"mov":t.includes("3gpp")?"3gp":"mp4";
+function confirmVideo(n,blob,ext,type){
+  const url=URL.createObjectURL(blob);
+  sheet(`<h3>Send video</h3><video class="pvw" src="${url}" controls playsinline></video><button class="rowb" id="vds">Send</button><button class="rowb" data-x="1">Cancel</button>`);
+  $("vds").onclick=()=>{unsheet();sendMedia(n,"vd",blob,ext,type)}}
+function onVidPick(e){
+  const f=e.target.files[0];e.target.value="";if(!f||!attTo)return;const n=attTo;
+  const type=(f.type||"").split(";")[0]||"video/mp4";
+  if(!OKV.includes(type))return toast("This video format isn't supported");
+  if(f.size>VBYTES)return toast("Video is too big (max 50 MB). Try recording it in the app.");
+  const url=URL.createObjectURL(f),v=document.createElement("video");v.preload="metadata";
+  v.onloadedmetadata=()=>{const dur=v.duration;URL.revokeObjectURL(url);if(isFinite(dur)&&dur>VMAX+1)return toast("Video can be at most 3 minutes");confirmVideo(n,f,extOf(type),type)};
+  v.onerror=()=>{URL.revokeObjectURL(url);confirmVideo(n,f,extOf(type),type)};
+  v.src=url}
+async function vidOpen(V){
+  if(V.st)V.st.getTracks().forEach(t=>t.stop());
+  V.st=await navigator.mediaDevices.getUserMedia({video:{facingMode:V.facing,width:{ideal:960},height:{ideal:540},frameRate:{ideal:24,max:30}},audio:true});
+  const v=$("vrv");v.srcObject=V.st;v.style.transform=V.facing==="user"?"scaleX(-1)":""}
+function vidClose(V){clearInterval(V.tick);if(V.st)V.st.getTracks().forEach(t=>t.stop());const o=$("vrec");if(o)o.remove();X.vrec=null}
+async function vidRecStart(n){
+  if(X.vrec)return;
+  if(!navigator.mediaDevices||!window.MediaRecorder)return toast("Video recording isn't supported on this device");
+  const V={n,facing:"user",st:null,rec:null,ch:[],t0:0,send:false,tick:0};X.vrec=V;
+  const o=document.createElement("div");o.id="vrec";
+  o.innerHTML='<video id="vrv" muted playsinline autoplay></video><div class="vtop"><span class="rdot hide" id="vrd"></span><span id="vrt">0:00</span><span>/ 3:00</span></div><div class="vb"><button id="vrx" class="vbtn">Discard</button><button id="vrg" class="vbtn on">Record</button><button id="vrf" class="vbtn">Flip</button></div>';
+  document.body.appendChild(o);
+  try{await vidOpen(V)}catch(e){vidClose(V);return toast("Allow camera and microphone to record video")}
+  $("vrx").onclick=()=>{if(V.rec&&V.rec.state==="recording"){V.send=false;V.rec.stop()}else vidClose(V)};
+  $("vrf").onclick=async()=>{if(V.rec&&V.rec.state==="recording")return;V.facing=V.facing==="user"?"environment":"user";try{await vidOpen(V)}catch(e){toast("Can't switch camera")}};
+  $("vrg").onclick=()=>{
+   if(V.rec&&V.rec.state==="recording"){V.send=true;V.rec.stop();return}
+   const mime=["video/webm;codecs=vp8,opus","video/webm","video/mp4"].find(t=>MediaRecorder.isTypeSupported(t))||"";
+   try{V.rec=new MediaRecorder(V.st,mime?{mimeType:mime,videoBitsPerSecond:800000,audioBitsPerSecond:64000}:{videoBitsPerSecond:800000})}catch(e){return toast("Couldn't start recording")}
+   V.ch=[];V.rec.ondataavailable=e=>{if(e.data&&e.data.size)V.ch.push(e.data)};
+   V.rec.onstop=()=>{const secs=(Date.now()-V.t0)/1000,type=(V.rec.mimeType||mime||"video/webm").split(";")[0],send=V.send,ch=V.ch,n2=V.n;vidClose(V);
+    if(!send)return;if(secs<1)return toast("Too short");
+    confirmVideo(n2,new Blob(ch,{type}),extOf(type),type)};
+   V.t0=Date.now();V.rec.start(500);$("vrg").classList.add("on");$("vrd").classList.remove("hide");$("vrx").textContent="Discard";
+   V.tick=setInterval(()=>{const s=(Date.now()-V.t0)/1000,e=$("vrt");if(e)e.textContent=fmtDur(s);if(s>=VMAX){V.send=true;try{V.rec.stop()}catch(x){}}},250)}}
+
+attachSheet=function(n){attTo=n;
+  sheet('<h3>Send</h3><button class="rowb" id="acm">Take photo</button><button class="rowb" id="agl">Photo from gallery</button><button class="rowb" id="avr">Record video (max 3 min)</button><button class="rowb" id="avg">Video from gallery</button><button class="rowb" data-x="1">Cancel</button>');
+  $("acm").onclick=()=>{unsheet();$("fcam").click()};$("agl").onclick=()=>{unsheet();$("fgal").click()};
+  $("avr").onclick=()=>{unsheet();vidRecStart(n)};$("avg").onclick=()=>{unsheet();$("fvid").click()}};
+
+/* =====================================================================================
+   Composer, reply bar, edit
+   ===================================================================================== */
+function paintBar(){const b=$("cbar");if(!b)return;const r=X.reply,e=X.edit;
+  if(!r&&!e){b.classList.add("hide");b.innerHTML="";return}
+  b.classList.remove("hide");
+  b.innerHTML=`<div class="cq"><b>${e?"Edit message":"Reply to "+esc(r.who)}</b><span>${esc(e?e.orig:r.t)}</span></div><button id="cbx" aria-label="Cancel">✕</button>`;
+  $("cbx").onclick=()=>{if(X.edit&&$("mi")){$("mi").value="";X.upd&&X.upd()}X.reply=null;X.edit=null;paintBar()}}
+function startReply(id){const n=cv&&cv.n;if(!n)return;const x=Lr(n).find(y=>y.id===id);if(!x||!$("mi"))return;
+  X.reply={id,who:x.i?(isGrp(n)?nameOf(x.s):nameOf(n)):"You",t:snip(x).slice(0,80)};X.edit=null;paintBar();$("mi").focus()}
+function startEdit(id){const n=cv&&cv.n;if(!n)return;const x=Lr(n).find(y=>y.id===id);if(!x||!$("mi"))return;
+  X.edit={id,n,orig:x.t,fw:x.fw,g:isGrp(n)};X.reply=null;paintBar();$("mi").value=x.t;X.upd&&X.upd();$("mi").focus()}
+async function commitEdit(t){const e=X.edit;X.edit=null;paintBar();if(!e||t===e.orig)return;
+  const x=Lr(e.n).find(y=>y.id===e.id);if(!x)return;
+  const r=await sb.from(e.g?"group_messages":"messages").update({body:(e.fw?"↪ Forwarded\n":"")+t}).eq("id",e.id).select("body,edited_at").single();
+  if(r.error){toast(/too old/i.test(String(r.error.message))?"Too old to edit (48 hours)":"Couldn't edit message");return}
+  x.t=t;x.ed=r.data.edited_at||new Date().toISOString();if(openChatId()===e.n)drawMsgs(e.n,true)}
+
+function composer(n){
+  const d=find(n),cin=$("cin");if(!d||!cin)return;
+  if(ST.blk.includes(n)){cin.innerHTML=`<div class="blk">You blocked this contact.<button id="ub">Unblock</button></div>`;
+   $("ub").onclick=()=>{ST.blk.splice(ST.blk.indexOf(n),1);sv_();blockDb(n,false);toast("Unblocked");go(cv,false)};return}
+  if(d.k!=="acc"&&!d.member){cin.innerHTML=`<div class="blk"><button id="jn">Join ${d.k==="cha"?"channel":"group"}</button></div>`;$("jn").onclick=()=>joinPublic(n);return}
+  if(d.k==="cha"&&!isAdm(d)){cin.innerHTML=`<div class="blk">Only admins can post in this channel</div>`;return}
+  if(d.k==="grp"&&!isAdm(d)&&!d.cs){cin.innerHTML=`<div class="blk">Only admins can send messages in this group</div>`;return}
+  const media=d.k==="acc"||isAdm(d)||d.cm!==false;
+  cin.innerHTML=`${media?'<button id="att" aria-label="Attach">':'<span style="display:none">'}<svg viewBox="0 0 24 24"><path d="M21 12.5l-8.6 8.6a5.5 5.5 0 0 1-7.8-7.8l9-9a3.7 3.7 0 0 1 5.2 5.2l-9`;
+  const mi=$("mi"),upd=()=>{const has=!!mi.value.trim();$("ms").classList.toggle("hide",!has);if($("mic"))$("mic").classList.toggle("hide",has)};X.upd=upd;
+  const send=()=>{const t=mi.value.trim();if(!t)return;
+   if(X.edit)commitEdit(t);else{const rp=X.reply&&X.reply.id;X.reply=null;paintBar();sendText(n,t,rp)}
+   mi.value="";upd();setDraft(n,"");if(!isGrp(n))stopTyp(n);mi.focus()};
+  $("ms").onclick=send;mi.onkeydown=e=>{if(e.key==="Enter")send()};
+  if(media){$("att").onclick=()=>attachSheet(n);$("mic").onclick=()=>recStart(n)}
+  mi.oninput=()=>{upd();if(!X.edit)setDraft(n,mi.value);if(!isGrp(n)){if(mi.value.trim())sendTyp(n);else stopTyp(n)}};{const dr=getDraft(n);if(dr&&!mi.value&&!X.edit)mi.value=dr}upd()}
+
+showChat=function(n){
+  SEL.clear();const d=find(n);if(!d)return;
+  if(X.cn!==n){X.reply=null;X.edit=null;closeSearch(true);X.cn=n}
+  show(6);
+  $("chh").innerHTML=hdr(d);$("chh").onclick=()=>go({t:"p",n});
+  if(d.k==="acc"&&TIMERS[n]){const s=$("chh").querySelector(".s");if(s)s.insertAdjacentHTML("beforeend"," · ⏱ "+TL[TIMERS[n]])}
+  dots($("cdw"),d);
+  if(X.au&&X.aun){X.au.pause()}
+  drawMsgs(n);
+  if(d.k==="acc")markRead(n);else if(d.member)markGRead(n);
+  composer(n);paintBar();
+  if(isGrp(n)&&Date.now()-(X.glAt||0)>20000){X.glAt=Date.now();loadGroups()}
+};
